@@ -1,7 +1,7 @@
 manifestVersion: 1
 name: "@keeb/proxmox"
 version: "2026.02.27.1"
-description: "Proxmox API auth + VM fleet lifecycle management"
+description: "Proxmox API auth + VM fleet lifecycle management (https://github.com/keeb/swamp-proxmox)"
 models:
   - proxmox_node.ts
   - proxmox_vm.ts
