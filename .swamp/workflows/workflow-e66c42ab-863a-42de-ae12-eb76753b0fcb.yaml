@@ -1,0 +1,33 @@
+id: e66c42ab-863a-42de-ae12-eb76753b0fcb
+name: stop-vm
+description: Stop a VM by name
+inputs:
+  vmName:
+    type: string
+    required: true
+    description: Name of the VM to stop
+jobs:
+  - name: stop
+    steps:
+      - name: auth
+        task:
+          type: model_method
+          modelIdOrName: keebDev02
+          methodName: auth
+        dependsOn: []
+        weight: 0
+      - name: stop-vm
+        task:
+          type: model_method
+          modelIdOrName: fleet
+          methodName: stop
+          inputs:
+            vmName: '${{ inputs.vmName }}'
+        dependsOn:
+          - step: auth
+            condition:
+              type: succeeded
+        weight: 0
+    dependsOn: []
+    weight: 0
+version: 1

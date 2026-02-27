@@ -1,0 +1,17 @@
+manifestVersion: 1
+name: "@keeb/proxmox"
+version: "2026.02.27.1"
+description: "Proxmox API auth + VM fleet lifecycle management"
+models:
+  - proxmox_node.ts
+  - proxmox_vm.ts
+workflows:
+  - sync-fleet/workflow.yaml
+  - start-vm/workflow.yaml
+  - stop-vm/workflow.yaml
+  - create-vm/workflow.yaml
+  - delete-vm/workflow.yaml
+  - vm-lifecycle-test/workflow.yaml
+  - guest-agent-test/workflow.yaml
+dependencies:
+  - "@keeb/ssh"

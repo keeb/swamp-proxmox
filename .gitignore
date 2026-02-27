@@ -1,0 +1,16 @@
+# Swamp runtime
+.swamp/bundles/
+.swamp/data/
+.swamp/outputs/
+.swamp/workflow-runs/
+.swamp/logs/
+.swamp/files/
+.swamp/telemetry/
+.swamp/definitions-evaluated/
+.swamp/workflows-evaluated/
+.swamp/inputs-evaluated/
+.swamp/secrets/
+.swamp/vault/**/.key
+
+# Claude Code
+.claude/

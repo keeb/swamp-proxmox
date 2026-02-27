@@ -1,0 +1,29 @@
+id: f500c507-6d23-4d89-9d2a-c1d01d250a34
+name: sync-fleet
+description: Authenticate with Proxmox and sync all VMs into the fleet
+jobs:
+  - name: sync
+    description: Authenticate and sync all VMs from Proxmox into fleet
+    steps:
+      - name: auth
+        description: Authenticate with Proxmox via keebDev02
+        task:
+          type: model_method
+          modelIdOrName: keebDev02
+          methodName: auth
+        dependsOn: []
+        weight: 0
+      - name: sync-fleet
+        description: List all QEMU VMs and write per-VM named resources
+        task:
+          type: model_method
+          modelIdOrName: fleet
+          methodName: sync
+        dependsOn:
+          - step: auth
+            condition:
+              type: succeeded
+        weight: 0
+    dependsOn: []
+    weight: 0
+version: 1

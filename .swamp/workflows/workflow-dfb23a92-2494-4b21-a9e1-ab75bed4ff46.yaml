@@ -1,0 +1,33 @@
+id: dfb23a92-2494-4b21-a9e1-ab75bed4ff46
+name: create-vm
+description: 'Create a new VM by name (PXE boot, default specs)'
+inputs:
+  vmName:
+    type: string
+    required: true
+    description: Name for the new VM
+jobs:
+  - name: create
+    steps:
+      - name: auth
+        task:
+          type: model_method
+          modelIdOrName: keebDev02
+          methodName: auth
+        dependsOn: []
+        weight: 0
+      - name: create-vm
+        task:
+          type: model_method
+          modelIdOrName: fleet
+          methodName: create
+          inputs:
+            vmName: '${{ inputs.vmName }}'
+        dependsOn:
+          - step: auth
+            condition:
+              type: succeeded
+        weight: 0
+    dependsOn: []
+    weight: 0
+version: 1
