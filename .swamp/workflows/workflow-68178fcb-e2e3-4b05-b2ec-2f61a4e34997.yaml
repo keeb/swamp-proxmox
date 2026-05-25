@@ -1,5 +1,5 @@
 id: 68178fcb-e2e3-4b05-b2ec-2f61a4e34997
-name: delete-vm
+name: '@keeb/delete-vm'
 description: 'Delete a VM by name (stops if running, then deletes)'
 inputs:
   vmName:

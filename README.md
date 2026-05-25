@@ -54,6 +54,36 @@ Fleet-style VM lifecycle management. Every method writes a named resource per VM
 swamp extension pull @keeb/proxmox
 ```
 
+## Example
+
+Authenticate against a Proxmox node, then start a VM and read its guest-agent IP from downstream steps:
+
+```yaml
+models:
+  - name: pve
+    type: "@keeb/proxmox/node"
+    globalArguments:
+      apiUrl: "https://10.0.0.4:8006"
+      username: "${vault.proxmox.username}"
+      password: "${vault.proxmox.password}"
+      realm: "pam"
+      node: "pve01"
+  - name: vm
+    type: "@keeb/proxmox/vm"
+    globalArguments:
+      apiUrl: "https://10.0.0.4:8006"
+      node: "pve01"
+
+jobs:
+  - name: boot-vm
+    steps:
+      - model: pve
+        method: auth
+      - model: vm
+        method: start
+        inputs: { vmName: "web01", waitSeconds: 120 }
+```
+
 ## License
 
 MIT

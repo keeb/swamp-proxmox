@@ -1,5 +1,5 @@
 id: 361565ac-f973-4b5a-b915-dbdfc9fb70fd
-name: vm-lifecycle-test
+name: '@keeb/vm-lifecycle-test'
 description: 'Test VM lifecycle - create, start, stop, delete using fleet with inputs'
 jobs:
   - name: lifecycle

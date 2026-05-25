@@ -1,5 +1,5 @@
 id: 371d7d5e-8e75-462e-a410-2475f368f3bc
-name: guest-agent-test
+name: '@keeb/guest-agent-test'
 description: 'Test guest agent - create VM, start (validates agent via IP fetch), cleanup'
 jobs:
   - name: guest-agent

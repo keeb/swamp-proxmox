@@ -1,5 +1,5 @@
 id: e66c42ab-863a-42de-ae12-eb76753b0fcb
-name: stop-vm
+name: '@keeb/stop-vm'
 description: Stop a VM by name
 inputs:
   vmName:

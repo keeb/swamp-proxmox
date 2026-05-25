@@ -1,13 +1,28 @@
+/**
+ * @keeb/proxmox/node model — authenticate with Proxmox VE and read basic
+ * node resource usage (memory, CPU, uptime). Auth ticket/CSRF are written
+ * as a named resource for downstream models to consume.
+ */
 import { z } from "npm:zod@4";
-import { resolveAuth, fetchWithCurl } from "./lib/proxmox.ts";
+import { fetchWithCurl, resolveAuth } from "./lib/proxmox.ts";
 
 const GlobalArgs = z.object({
-  apiUrl: z.string().describe("Proxmox API base URL (e.g., https://10.0.0.4:8006)"),
-  username: z.string().optional().describe("Proxmox username for authentication"),
-  password: z.string().optional().describe("Proxmox password for authentication"),
-  realm: z.string().default("pam").describe("Authentication realm (pam, pve, etc.)"),
+  apiUrl: z.string().describe(
+    "Proxmox API base URL (e.g., https://10.0.0.4:8006)",
+  ),
+  username: z.string().optional().describe(
+    "Proxmox username for authentication",
+  ),
+  password: z.string().optional().describe(
+    "Proxmox password for authentication",
+  ),
+  realm: z.string().default("pam").describe(
+    "Authentication realm (pam, pve, etc.)",
+  ),
   node: z.string().describe("Proxmox node name"),
-  skipTlsVerify: z.boolean().default(true).describe("Skip TLS certificate verification"),
+  skipTlsVerify: z.boolean().default(true).describe(
+    "Skip TLS certificate verification",
+  ),
 });
 
 const NodeDataSchema = z.object({
@@ -29,11 +44,18 @@ const NodeStatusSchema = z.object({
 });
 
 function authOpts() {
-  return { modelType: "@user/proxmox/node" };
+  return { modelType: "@keeb/proxmox/node" };
 }
 
-export const model = {
-  type: "@user/proxmox/node",
+/** Swamp model definition for `@keeb/proxmox/node`. */
+export const model: {
+  type: string;
+  version: string;
+  resources: Record<string, unknown>;
+  globalArguments: typeof GlobalArgs;
+  methods: Record<string, unknown>;
+} = {
+  type: "@keeb/proxmox/node",
   version: "2026.02.18.1",
   resources: {
     "node": {
@@ -54,16 +76,20 @@ export const model = {
     auth: {
       description: "Authenticate with Proxmox and return ticket/csrfToken",
       arguments: z.object({}),
-      execute: async (args, context) => {
+      execute: async (_args, context) => {
         const logs = [];
         const log = (msg) => logs.push(msg);
 
         log(`Authenticating with Proxmox at ${context.globalArgs.apiUrl}`);
-        const auth = await resolveAuth(context.globalArgs, context, { ...authOpts(), skipCache: true });
+        const auth = await resolveAuth(context.globalArgs, context, {
+          ...authOpts(),
+          skipCache: true,
+        });
         log(`Authentication successful (source: ${auth.source})`);
 
         const handle = await context.writeResource("node", "node", {
-          ticket: auth.ticket, csrfToken: auth.csrfToken,
+          ticket: auth.ticket,
+          csrfToken: auth.csrfToken,
           username: auth.username,
           logs: logs.join("\n"),
           timestamp: new Date().toISOString(),
@@ -74,18 +100,21 @@ export const model = {
     status: {
       description: "Fetch current node resource usage (memory, CPU, uptime)",
       arguments: z.object({}),
-      execute: async (args, context) => {
+      execute: async (_args, context) => {
         const { apiUrl, node, skipTlsVerify } = context.globalArgs;
         const auth = await resolveAuth(context.globalArgs, context, authOpts());
 
-        const response = await fetchWithCurl(`${apiUrl}/api2/json/nodes/${node}/status`, {
-          method: "GET",
-          headers: {
-            "Cookie": `PVEAuthCookie=${auth.ticket}`,
-            "CSRFPreventionToken": auth.csrfToken,
+        const response = await fetchWithCurl(
+          `${apiUrl}/api2/json/nodes/${node}/status`,
+          {
+            method: "GET",
+            headers: {
+              "Cookie": `PVEAuthCookie=${auth.ticket}`,
+              "CSRFPreventionToken": auth.csrfToken,
+            },
+            skipTlsVerify,
           },
-          skipTlsVerify,
-        });
+        );
 
         if (!response.ok) {
           throw new Error(`Failed to fetch node status: ${response.status}`);

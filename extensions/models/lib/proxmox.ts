@@ -50,12 +50,19 @@ export async function fetchWithCurl(url, options) {
     ok: status >= 200 && status < 300,
     status,
     statusText: statusLine,
-    text: async () => bodyText,
-    json: async () => JSON.parse(bodyText),
+    text: () => bodyText,
+    json: () => JSON.parse(bodyText),
   };
 }
 
-export async function waitForTask(apiUrl, node, upid, ticket, csrfToken, skipTlsVerify) {
+export async function waitForTask(
+  apiUrl,
+  node,
+  upid,
+  ticket,
+  csrfToken,
+  skipTlsVerify,
+) {
   const encodedUpid = encodeURIComponent(upid);
   const url = `${apiUrl}/api2/json/nodes/${node}/tasks/${encodedUpid}/status`;
   let pollCount = 0;
@@ -87,7 +94,7 @@ export async function waitForTask(apiUrl, node, upid, ticket, csrfToken, skipTls
       };
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 }
 
@@ -99,15 +106,21 @@ export async function resolveAuth(globalArgs, context, opts = {}) {
   // 1. Check for explicit ticket/csrfToken in global arguments
   const { ticket: explicitTicket, csrfToken: explicitCsrf } = globalArgs;
   if (explicitTicket && explicitCsrf) {
-    return { ticket: explicitTicket, csrfToken: explicitCsrf, source: "explicit", freshAuth: false };
+    return {
+      ticket: explicitTicket,
+      csrfToken: explicitCsrf,
+      source: "explicit",
+      freshAuth: false,
+    };
   }
 
   // 2. Try cached auth from disk (unless skipCache)
   if (!opts.skipCache) {
     try {
-      const modelType = opts.modelType || "@user/proxmox/api";
+      const modelType = opts.modelType || "@keeb/proxmox/api";
       const defId = context.definition.id;
-      const authDir = `${context.repoDir}/.swamp/data/${modelType}/${defId}/auth`;
+      const authDir =
+        `${context.repoDir}/.swamp/data/${modelType}/${defId}/auth`;
 
       // @ts-ignore - Deno API
       const entries = [];
@@ -118,7 +131,9 @@ export async function resolveAuth(globalArgs, context, opts = {}) {
 
       if (entries.length > 0) {
         // Find highest version number
-        const versions = entries.map(e => parseInt(e.name, 10)).filter(n => !isNaN(n));
+        const versions = entries.map((e) => parseInt(e.name, 10)).filter((n) =>
+          !isNaN(n)
+        );
         const latest = Math.max(...versions);
         const rawPath = `${authDir}/${latest}/raw`;
         const metaPath = `${authDir}/${latest}/metadata.yaml`;
@@ -134,7 +149,12 @@ export async function resolveAuth(globalArgs, context, opts = {}) {
             // @ts-ignore - Deno API
             const rawText = await Deno.readTextFile(rawPath);
             const cached = JSON.parse(rawText);
-            return { ticket: cached.ticket, csrfToken: cached.csrfToken, source: "cache", freshAuth: false };
+            return {
+              ticket: cached.ticket,
+              csrfToken: cached.csrfToken,
+              source: "cache",
+              freshAuth: false,
+            };
           }
         }
       }
@@ -148,7 +168,7 @@ export async function resolveAuth(globalArgs, context, opts = {}) {
   if (!username || !password) {
     throw new Error(
       "No auth available: no explicit ticket, no valid cached auth, and no username/password. " +
-      "Run 'swamp workflow run sync-proxmox-vms --json' to authenticate via vault."
+        "Run 'swamp workflow run sync-proxmox-vms --json' to authenticate via vault.",
     );
   }
 
@@ -166,7 +186,9 @@ export async function resolveAuth(globalArgs, context, opts = {}) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Authentication failed: ${response.status} ${response.statusText} - ${errorText}`);
+    throw new Error(
+      `Authentication failed: ${response.status} ${response.statusText} - ${errorText}`,
+    );
   }
 
   const result = await response.json();
@@ -182,22 +204,35 @@ export async function resolveAuth(globalArgs, context, opts = {}) {
 }
 
 export function is401(e) {
-  return e instanceof Error && (e.message.includes("401") || e.message.includes("authentication"));
+  return e instanceof Error &&
+    (e.message.includes("401") || e.message.includes("authentication"));
 }
 
-export async function getVmIpWithRetry(apiUrl, node, vmid, ticket, csrfToken, skipTlsVerify, waitSeconds = 120, pollInterval = 5) {
+export async function getVmIpWithRetry(
+  apiUrl,
+  node,
+  vmid,
+  ticket,
+  csrfToken,
+  skipTlsVerify,
+  waitSeconds = 120,
+  pollInterval = 5,
+) {
   const deadline = Date.now() + (waitSeconds * 1000);
 
   while (Date.now() < deadline) {
     try {
-      const netResponse = await fetchWithCurl(`${apiUrl}/api2/json/nodes/${node}/qemu/${vmid}/agent/network-get-interfaces`, {
-        method: "GET",
-        headers: {
-          "Cookie": `PVEAuthCookie=${ticket}`,
-          "CSRFPreventionToken": csrfToken,
+      const netResponse = await fetchWithCurl(
+        `${apiUrl}/api2/json/nodes/${node}/qemu/${vmid}/agent/network-get-interfaces`,
+        {
+          method: "GET",
+          headers: {
+            "Cookie": `PVEAuthCookie=${ticket}`,
+            "CSRFPreventionToken": csrfToken,
+          },
+          skipTlsVerify: skipTlsVerify ?? true,
         },
-        skipTlsVerify: skipTlsVerify ?? true,
-      });
+      );
       if (netResponse.ok) {
         const netResult = await netResponse.json();
         const interfaces = netResult.data?.result || [];
@@ -205,7 +240,10 @@ export async function getVmIpWithRetry(apiUrl, node, vmid, ticket, csrfToken, sk
           if (iface.name === "lo") continue;
           const ips = iface["ip-addresses"] || [];
           for (const ip of ips) {
-            if (ip["ip-address-type"] === "ipv4" && !ip["ip-address"].startsWith("127.")) {
+            if (
+              ip["ip-address-type"] === "ipv4" &&
+              !ip["ip-address"].startsWith("127.")
+            ) {
               return ip["ip-address"];
             }
           }
@@ -215,7 +253,7 @@ export async function getVmIpWithRetry(apiUrl, node, vmid, ticket, csrfToken, sk
       // Guest agent not ready yet
     }
 
-    await new Promise(r => setTimeout(r, pollInterval * 1000));
+    await new Promise((r) => setTimeout(r, pollInterval * 1000));
   }
 
   return null;

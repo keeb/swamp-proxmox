@@ -1,5 +1,5 @@
 id: f500c507-6d23-4d89-9d2a-c1d01d250a34
-name: sync-fleet
+name: '@keeb/sync-fleet'
 description: Authenticate with Proxmox and sync all VMs into the fleet
 jobs:
   - name: sync
