@@ -140,7 +140,7 @@ export const model: {
   methods: Record<string, unknown>;
 } = {
   type: "@keeb/proxmox/vm",
-  version: "2026.02.18.1",
+  version: "2026.05.26.1",
   resources: {
     "vm": {
       description: "VM operation result",
