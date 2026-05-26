@@ -11,6 +11,10 @@
 .swamp/inputs-evaluated/
 .swamp/secrets/
 .swamp/vault/**/.key
+.swamp/cache/
+.swamp/_extension_catalog.db
+.swamp/_extension_catalog.db-shm
+.swamp/_extension_catalog.db-wal
 
 # Claude Code
 .claude/

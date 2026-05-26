@@ -26,9 +26,9 @@ const GlobalArgs = z.object({
 });
 
 const NodeDataSchema = z.object({
-  ticket: z.string(),
-  csrfToken: z.string(),
-  username: z.string(),
+  ticket: z.string().meta({ sensitive: true }),
+  csrfToken: z.string().meta({ sensitive: true }),
+  username: z.string().meta({ sensitive: true }),
   logs: z.string().optional(),
   timestamp: z.string(),
 });
@@ -56,7 +56,7 @@ export const model: {
   methods: Record<string, unknown>;
 } = {
   type: "@keeb/proxmox/node",
-  version: "2026.02.18.1",
+  version: "2026.05.26.1",
   resources: {
     "node": {
       description: "Auth tokens for Proxmox node",
