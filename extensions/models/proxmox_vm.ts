@@ -37,6 +37,9 @@ const StartArgs = z.object({
   pollInterval: z.number().default(5).describe(
     "Seconds between IP poll attempts",
   ),
+  requireIp: z.boolean().default(true).describe(
+    "Fail if the guest agent does not report an IP. Set false for VMs with no agent (e.g. booting an installer ISO).",
+  ),
 });
 
 const StopArgs = z.object({
@@ -77,6 +80,27 @@ const SetConfigArgs = z.object({
 });
 
 const SyncArgs = z.object({});
+
+const SpiceConnectArgs = z.object({
+  vmName: z.string().describe("VM name to manage"),
+  outputPath: z.string().optional().describe(
+    "Where to write the .vv connection file (default <repoDir>/spice/<vmName>.vv)",
+  ),
+  proxyHost: z.string().optional().describe(
+    "Override the SPICE proxy host. Proxmox advertises its own node FQDN (often an unresolvable .local name); defaults to the host from apiUrl.",
+  ),
+});
+
+const SpiceSchema = z.object({
+  vmid: z.number(),
+  vmName: z.string(),
+  configPath: z.string().describe("Path to the generated virt-viewer .vv file"),
+  host: z.string().describe("SPICE proxy host"),
+  tlsPort: z.string().describe("SPICE TLS port"),
+  command: z.string().describe("Command to open the console"),
+  logs: z.string().optional(),
+  timestamp: z.string(),
+});
 
 const VmDataSchema = z.object({
   vmid: z.number(),
@@ -148,6 +172,12 @@ export const model: {
       lifetime: "infinite",
       garbageCollection: 10,
     },
+    "spice": {
+      description: "SPICE console connection details for a VM",
+      schema: SpiceSchema,
+      lifetime: "infinite",
+      garbageCollection: 10,
+    },
   },
   globalArguments: ProxmoxConnectionArgs,
   methods: {
@@ -211,7 +241,12 @@ export const model: {
         "Start VM if stopped (idempotent), wait for IP. Replaces ensureVmRunning.",
       arguments: StartArgs,
       execute: async (args, context) => {
-        const { vmName, waitSeconds = 120, pollInterval = 5 } = args;
+        const {
+          vmName,
+          waitSeconds = 120,
+          pollInterval = 5,
+          requireIp = true,
+        } = args;
         const { apiUrl, node, skipTlsVerify } = context.globalArgs;
         const logs = [];
         const log = (msg) => logs.push(msg);
@@ -287,9 +322,13 @@ export const model: {
         );
         if (ip) {
           log(`Got IP: ${ip}`);
-        } else {
+        } else if (requireIp) {
           throw new Error(
             `VM "${vmName}" (vmid ${vm.vmid}) is running but guest agent did not return an IP within ${waitSeconds}s. Is qemu-guest-agent installed and agent enabled in VM config?`,
+          );
+        } else {
+          log(
+            `No guest agent IP after ${waitSeconds}s — continuing (requireIp=false)`,
           );
         }
 
@@ -752,6 +791,102 @@ export const model: {
           vmName: vm.name,
           config: Object.fromEntries(configParams),
           success: true,
+          logs: logs.join("\n"),
+          timestamp: new Date().toISOString(),
+        });
+        return { dataHandles: [handle] };
+      },
+    },
+
+    spiceConnect: {
+      description:
+        "Generate a virt-viewer .vv file for the VM's SPICE console (requires a SPICE-capable display type)",
+      arguments: SpiceConnectArgs,
+      execute: async (args, context) => {
+        const { vmName, outputPath, proxyHost } = args;
+        const { apiUrl, node, skipTlsVerify } = context.globalArgs;
+        const logs = [];
+        const log = (msg) => {
+          logs.push(msg);
+          console.log(msg);
+        };
+
+        const auth = await resolveAuth(context.globalArgs, context, authOpts());
+        const { ticket, csrfToken } = auth;
+
+        const vm = await resolveVm(
+          apiUrl,
+          node,
+          vmName,
+          ticket,
+          csrfToken,
+          skipTlsVerify,
+        );
+        log(`Found VM "${vmName}" → vmid ${vm.vmid} [${vm.status}]`);
+
+        const response = await fetchWithCurl(
+          `${apiUrl}/api2/json/nodes/${node}/qemu/${vm.vmid}/spiceproxy`,
+          {
+            method: "POST",
+            headers: {
+              "Cookie": `PVEAuthCookie=${ticket}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+              "CSRFPreventionToken": csrfToken,
+            },
+            skipTlsVerify: skipTlsVerify ?? true,
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to get SPICE proxy config: ${response.status} ${await response
+              .text()}. Does VM ${vm.vmid} use a SPICE display type (qxl / virtio-gl)?`,
+          );
+        }
+
+        const cfg = (await response.json()).data;
+
+        // Proxmox advertises its own node FQDN as the proxy (e.g.
+        // http://keeb-dev-02.local:3128), which frequently does not resolve
+        // from the client. Point it at a host we know is reachable — the one
+        // we just talked to. host-subject still pins the real cert identity.
+        if (cfg.proxy) {
+          const desiredHost = proxyHost ?? new URL(apiUrl).hostname;
+          const proxyUrl = new URL(cfg.proxy);
+          if (proxyUrl.hostname !== desiredHost) {
+            log(
+              `Rewriting proxy host ${proxyUrl.hostname} → ${desiredHost}`,
+            );
+            proxyUrl.hostname = desiredHost;
+            cfg.proxy = proxyUrl.toString().replace(/\/$/, "");
+          }
+        }
+
+        // virt-viewer .vv is an INI file with a single [virt-viewer] section.
+        const lines = ["[virt-viewer]"];
+        for (const [key, value] of Object.entries(cfg)) {
+          lines.push(`${key}=${value}`);
+        }
+        const contents = lines.join("\n") + "\n";
+
+        const path = outputPath ?? `${context.repoDir}/spice/${vmName}.vv`;
+        const dir = path.substring(0, path.lastIndexOf("/"));
+        // @ts-ignore - Deno API
+        await Deno.mkdir(dir, { recursive: true });
+        // @ts-ignore - Deno API
+        await Deno.writeTextFile(path, contents);
+        log(`Wrote SPICE config to ${path}`);
+
+        const command = `remote-viewer ${path}`;
+        log(`Open the console with: ${command}`);
+
+        const handle = await context.writeResource("spice", vm.name, {
+          vmid: vm.vmid,
+          vmName: vm.name,
+          configPath: path,
+          host: String(cfg.host ?? ""),
+          tlsPort: String(cfg["tls-port"] ?? ""),
+          command,
           logs: logs.join("\n"),
           timestamp: new Date().toISOString(),
         });

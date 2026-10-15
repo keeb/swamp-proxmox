@@ -1,6 +1,6 @@
 manifestVersion: 1
 name: "@keeb/proxmox"
-version: "2026.05.26.1"
+version: "2026.10.15.1"
 description: "Proxmox API auth + VM fleet lifecycle management (https://github.com/keeb/swamp-proxmox)"
 repository: https://github.com/keeb/swamp-proxmox
 additionalFiles:
@@ -17,12 +17,12 @@ models:
   - proxmox_node.ts
   - proxmox_vm.ts
 workflows:
-  - sync-fleet/workflow.yaml
-  - start-vm/workflow.yaml
-  - stop-vm/workflow.yaml
-  - create-vm/workflow.yaml
-  - delete-vm/workflow.yaml
-  - vm-lifecycle-test/workflow.yaml
-  - guest-agent-test/workflow.yaml
+  - workflow-f500c507-6d23-4d89-9d2a-c1d01d250a34.yaml
+  - workflow-8a929a75-f1b5-4791-ba95-7ddebf97ac2e.yaml
+  - workflow-e66c42ab-863a-42de-ae12-eb76753b0fcb.yaml
+  - workflow-dfb23a92-2494-4b21-a9e1-ab75bed4ff46.yaml
+  - workflow-68178fcb-e2e3-4b05-b2ec-2f61a4e34997.yaml
+  - workflow-361565ac-f973-4b5a-b915-dbdfc9fb70fd.yaml
+  - workflow-371d7d5e-8e75-462e-a410-2475f368f3bc.yaml
 dependencies:
   - "@keeb/ssh"
