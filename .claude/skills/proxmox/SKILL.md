@@ -5,9 +5,10 @@ description: Authenticate with Proxmox VE and manage VM fleet lifecycle (create,
 
 # @keeb/proxmox
 
-Swamp extension for Proxmox VE: API auth and fleet-style VM lifecycle. Two
-models share an on-disk auth cache so a single `auth` step covers all VM
-operations for the next 2 hours.
+Swamp extension for Proxmox VE: API auth and fleet-style VM lifecycle. The
+node model's `auth` step writes a `node` resource (ticket + CSRF token, both
+vaulted as sensitive) that VM models consume via CEL, so a single `auth` step
+covers all VM operations for the ticket's 2-hour lifetime.
 
 ## Models
 
@@ -20,16 +21,21 @@ Global arguments: `apiUrl`, `username`, `password`, `realm` (default `pam`),
 
 | Method   | Arguments | Writes resource         | Description                                                                     |
 | -------- | --------- | ----------------------- | ------------------------------------------------------------------------------- |
-| `auth`   | none      | `node` named `node`     | Logs in, caches ticket + CSRF for 2h, writes a `node` resource (lifetime `2h`). |
+| `auth`   | none      | `node` named `node`     | Logs in, writes ticket + CSRF as a `node` resource (lifetime `2h`).            |
 | `status` | none      | `status` named `status` | Fetches `/nodes/{node}/status` (memory, CPU, uptime).                           |
+
+Also `storageList`, `isoList(storage)` and `downloadIso(storage, url, filename,
+checksum?, checksumAlgorithm?)`. Non-`auth` methods reuse the stored `node`
+resource while it is under 2h old, otherwise log in with username/password.
 
 ### `@user/proxmox/vm`
 
 Fleet-style VM lifecycle. Every method writes a `vm` resource keyed by VM name,
 so downstream models can read it via CEL.
 
-Global arguments: `apiUrl`, `ticket` (optional — usually resolved from cache),
-`csrfToken` (optional), `node`, `skipTlsVerify` (default `true`).
+Global arguments: `apiUrl`, `ticket` and `csrfToken` (sensitive — wire them
+from the node model's `node` resource with `data.latest`), `node`,
+`skipTlsVerify` (default `true`).
 
 | Method         | Arguments                                                                                           | Description                                                                                                                                                    |
 | -------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -49,13 +55,18 @@ Global arguments: `apiUrl`, `ticket` (optional — usually resolved from cache),
 `resolveAuth` checks three sources in order:
 
 1. Explicit `ticket` + `csrfToken` in global args
-2. Cached auth on disk under
-   `.swamp/data/<modelType>/<defId>/auth/<version>/raw` (TTL: 2 hours)
+2. (node model only) the model's own `node` resource, read with
+   `readResource`, if written less than 2 hours ago
 3. Username/password → `POST /access/ticket`
 
-Always prepend an `auth` step in workflows so subsequent VM steps hit the cache.
-The `node` model's `auth` method writes the cache; the `vm` model reads it
-transparently.
+Always prepend an `auth` step in workflows. The `vm` model has no
+username/password, so its definition must wire the tokens:
+
+```yaml
+globalArguments:
+  ticket: '${{ data.latest("pve01", "node").attributes.ticket }}'
+  csrfToken: '${{ data.latest("pve01", "node").attributes.csrfToken }}'
+```
 
 ### Vault credentials
 
@@ -66,10 +77,10 @@ model definition YAML for a `@user/proxmox/node` instance:
 modelType: "@user/proxmox/node"
 name: pve01
 globalArguments:
-  apiUrl: https://10.0.0.4:8006
+  apiUrl: https://192.0.2.10:8006
   node: pve01
-  username: ${{ vault.proxmox.username }}
-  password: ${{ vault.proxmox.password }}
+  username: ${{ vault.get('proxmox', 'username') }}
+  password: ${{ vault.get('proxmox', 'password') }}
 ```
 
 ### Wiring with CEL
@@ -140,9 +151,15 @@ via `setConfig` and flip the boot order with `setBootOrder`.
 ## Gotchas
 
 - **HTTP via curl, not fetch.** All API calls go through `fetchWithCurl` (a
-  `Deno.Command` shell-out) so the `-k` flag handles self-signed PVE certs.
+  validated `Deno.Command` shell-out) so `--insecure` handles self-signed PVE
+  certs per request. Secrets go in a 0600 temp curl config file, never argv.
   Don't swap in `globalThis.fetch` — TLS verification will break against typical
-  homelab nodes.
+  homelab nodes. `curl` must be installed.
+- **Idempotency.** `create` returns the existing VM if the name is taken;
+  `delete` succeeds if the VM is already gone; `stop`/`delete`/`create` throw
+  if the Proxmox task does not finish `OK`. Tasks time out after 1 hour.
+- **`spiceConnect` writes `spice-<vmName>`**, not `<vmName>`, so it never
+  shadows the VM's own data.
 - **`start` is strict about the guest agent.** It throws if no IPv4 comes back
   within `waitSeconds`. The VM must have `qemu-guest-agent` installed and
   `agent=1` set in config. New `create` calls already set `agent: "1"`, but the
@@ -155,9 +172,8 @@ via `setConfig` and flip the boot order with `setBootOrder`.
 - **`smbios1` carries the VM name** as a base64-encoded serial on `create` —
   downstream tooling can read it back from `dmidecode` without round-tripping to
   the API.
-- **Auth cache lives under `.swamp/data/<modelType>/<defId>/auth/`** with a
-  hard-coded 2h TTL. The `node` model's `auth` method passes `skipCache: true`
-  to force a refresh; every other call reuses the cache.
+- **Auth reuse has a hard-coded 2h TTL.** The `node` model's `auth` method
+  always logs in fresh; its other methods reuse the stored `node` resource.
 - **`username` in returned auth metadata is `${user}@${realm}`**, not the bare
   username — important when comparing identities downstream.
 - **`sync` uses a tight retry budget for IPs** (5s total, 2s interval) to keep
